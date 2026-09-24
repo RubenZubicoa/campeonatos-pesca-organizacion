@@ -1,0 +1,138 @@
+.participantes {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.4fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.participantes__alta,
+.participantes__lista {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+
+.participantes h2 {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+.participantes p {
+  margin: 0 0 16px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.participantes__alta {
+  display: grid;
+  gap: 12px;
+}
+
+.participantes label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold-2);
+}
+
+.participantes input {
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(209, 176, 74, 0.45);
+  background: #12110ee6;
+  color: #fff;
+  padding: 10px 12px;
+  font: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 400;
+}
+
+.participantes button {
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(209, 176, 74, 0.45);
+  background: linear-gradient(180deg, var(--gold-2), var(--gold));
+  color: #1a1608;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.participantes__error {
+  margin: 0;
+  color: #ffc9bf;
+}
+
+.participantes__lista ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.participantes__lista li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.participantes__lista li strong,
+.participantes__lista li span {
+  display: block;
+}
+
+.participantes__lista li span {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.participantes__id {
+  margin: 0;
+  text-align: right;
+}
+
+.participantes__id span {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 11px;
+  color: var(--gold-2);
+}
+
+.participantes__id code {
+  display: block;
+  margin-top: 4px;
+  font-size: 18px;
+  letter-spacing: 0.12em;
+  color: #fff;
+}
+
+.participantes__lista button {
+  background: #12110ee6;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 800px) {
+  .participantes,
+  .participantes__lista li {
+    grid-template-columns: 1fr;
+  }
+
+  .participantes__id {
+    text-align: left;
+  }
+}
