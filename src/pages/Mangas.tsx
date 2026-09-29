@@ -1,109 +1,122 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import {
-  asignarManga,
-  asignarMangaPermitiendoRepeticion,
-  loadMangas,
-  saveMangas,
-  type Manga,
-  type RangoHorario,
-} from '../data/mangas'
-import { loadParticipantes } from '../data/participantes'
-import { loadEscenario } from '../data/tramos'
+  ApiError,
+  cambiarVisibilidadManga,
+  crearManga,
+  listarMangas,
+  listarParticipantes,
+  obtenerEscenario,
+  quitarManga,
+} from '../api'
+import type { Manga, RangoHorario } from '../data/mangas'
+import type { Participante } from '../data/participantes'
+import type { Sector, Tramo } from '../data/tramos'
 import './Mangas.css'
 
 const vacio = { nombre: '', inicio1: '', fin1: '', inicio2: '', fin2: '' }
 
 export function Mangas() {
   const { campeonatoId = '' } = useParams()
-  const [mangas, setMangas] = useState<Manga[]>(() => loadMangas(campeonatoId))
+  const [mangas, setMangas] = useState<Manga[]>([])
+  const [participantes, setParticipantes] = useState<Participante[]>([])
+  const [sectores, setSectores] = useState<Sector[]>([])
+  const [tramos, setTramos] = useState<Tramo[]>([])
   const [abierto, setAbierto] = useState(false)
   const [formulario, setFormulario] = useState(vacio)
   const [error, setError] = useState('')
   const [confirmar, setConfirmar] = useState(false)
-  const participantes = loadParticipantes(campeonatoId)
-  const escenario = loadEscenario(campeonatoId)
+
+  useEffect(() => {
+    let activo = true
+    Promise.all([listarMangas(campeonatoId), listarParticipantes(campeonatoId), obtenerEscenario(campeonatoId)])
+      .then(([mangasCargadas, inscritos, escenario]) => {
+        if (!activo) return
+        setMangas(mangasCargadas)
+        setParticipantes(inscritos)
+        setSectores(escenario.sectores)
+        setTramos(escenario.tramos)
+      })
+      .catch((causa: unknown) => {
+        if (activo) setError(causa instanceof Error ? causa.message : 'No se han podido cargar las mangas.')
+      })
+    return () => {
+      activo = false
+    }
+  }, [campeonatoId])
 
   function actualizar(campo: keyof typeof vacio, valor: string) {
     setFormulario((actual) => ({ ...actual, [campo]: valor }))
   }
 
-  function crear(evento: FormEvent) {
-    evento.preventDefault()
-    const nombre = formulario.nombre.trim()
-    const rangos = [
+  function rangosDelFormulario(): [RangoHorario, RangoHorario] | null {
+    const rangos: [RangoHorario, RangoHorario] = [
       { inicio: formulario.inicio1, fin: formulario.fin1 },
       { inicio: formulario.inicio2, fin: formulario.fin2 },
-    ] as const
-    if (!nombre || rangos.some((rango) => !rango.inicio || !rango.fin)) {
+    ]
+    if (!formulario.nombre.trim() || rangos.some((rango) => !rango.inicio || !rango.fin)) {
       setError('Indica el nombre y las dos franjas horarias.')
-      return
+      return null
     }
     if (rangos.some((rango) => rango.inicio >= rango.fin)) {
       setError('En cada franja, la hora de inicio tiene que ser anterior a la de fin.')
-      return
+      return null
     }
-
-    const reparto = asignarManga(participantes, escenario.sectores, escenario.tramos, mangas)
-    if (!reparto.ok) {
-      setConfirmar(true)
-      setError('')
-      return
-    }
-
-    guardar(nombre, [rangos[0], rangos[1]], reparto.asignaciones)
+    return rangos
   }
 
-  function continuar() {
-    const nombre = formulario.nombre.trim()
-    const reparto = asignarMangaPermitiendoRepeticion(
-      participantes,
-      escenario.sectores,
-      escenario.tramos,
-      mangas,
-    )
-    if (!reparto.ok) {
+  async function crear(evento: FormEvent) {
+    evento.preventDefault()
+    const rangos = rangosDelFormulario()
+    if (!rangos) return
+    await guardar(formulario.nombre.trim(), rangos, false)
+  }
+
+  async function continuar() {
+    const rangos = rangosDelFormulario()
+    if (!rangos) return
+    await guardar(formulario.nombre.trim(), rangos, true)
+  }
+
+  async function guardar(nombre: string, rangos: [RangoHorario, RangoHorario], permitirRepeticion: boolean) {
+    try {
+      const manga = await crearManga(campeonatoId, { nombre, rangos, permitirRepeticion })
+      setMangas((actual) => [...actual, manga])
+      setFormulario(vacio)
+      setAbierto(false)
       setConfirmar(false)
-      setError(reparto.error)
-      return
+      setError('')
+    } catch (causa: unknown) {
+      if (causa instanceof ApiError && causa.requiereConfirmacion) {
+        setConfirmar(true)
+        setError('')
+        return
+      }
+      setConfirmar(false)
+      setError(causa instanceof Error ? causa.message : 'No se ha podido guardar la manga.')
     }
-    guardar(nombre, [
-      { inicio: formulario.inicio1, fin: formulario.fin1 },
-      { inicio: formulario.inicio2, fin: formulario.fin2 },
-    ], reparto.asignaciones)
   }
 
-  function guardar(
-    nombre: string,
-    rangos: [RangoHorario, RangoHorario],
-    asignaciones: Manga['asignaciones'],
-  ) {
-    const siguiente = [
-      ...mangas,
-      { id: crypto.randomUUID(), nombre, rangos, asignaciones, visibleParaParticipantes: false },
-    ]
-    setMangas(siguiente)
-    saveMangas(campeonatoId, siguiente)
-    setFormulario(vacio)
-    setAbierto(false)
-    setConfirmar(false)
-    setError('')
+  async function cambiarVisibilidad(id: string) {
+    const manga = mangas.find((item) => item.id === id)
+    if (!manga) return
+    try {
+      const actualizada = await cambiarVisibilidadManga(campeonatoId, id, !manga.visibleParaParticipantes)
+      setMangas((actual) => actual.map((item) => (item.id === id ? actualizada : item)))
+    } catch (causa: unknown) {
+      setError(causa instanceof Error ? causa.message : 'No se ha podido cambiar la visibilidad.')
+    }
   }
 
-  function cambiarVisibilidad(id: string) {
-    const siguiente = mangas.map((manga) =>
-      manga.id === id
-        ? { ...manga, visibleParaParticipantes: !manga.visibleParaParticipantes }
-        : manga,
-    )
-    setMangas(siguiente)
-    saveMangas(campeonatoId, siguiente)
-  }
-
-  function quitarUltima() {
-    const siguiente = mangas.slice(0, -1)
-    setMangas(siguiente)
-    saveMangas(campeonatoId, siguiente)
+  async function quitarUltima() {
+    const ultima = mangas.at(-1)
+    if (!ultima) return
+    try {
+      await quitarManga(campeonatoId, ultima.id)
+      setMangas((actual) => actual.slice(0, -1))
+    } catch (causa: unknown) {
+      setError(causa instanceof Error ? causa.message : 'No se ha podido quitar la manga.')
+    }
   }
 
   return (
@@ -161,6 +174,8 @@ export function Mangas() {
         </form>
       )}
 
+      {!abierto && error && <p className="mangas__error">{error}</p>}
+
       {mangas.length === 0 ? (
         <p className="mangas__vacio">Todavía no hay mangas en este campeonato.</p>
       ) : (
@@ -197,8 +212,8 @@ export function Mangas() {
                       .filter((asignacion) => asignacion.turno === turno)
                       .map((asignacion) => {
                         const participante = participantes.find((item) => item.id === asignacion.participanteId)
-                        const tramo = escenario.tramos.find((item) => item.id === asignacion.tramoId)
-                        const sector = escenario.sectores.find((item) => item.id === asignacion.sectorId)
+                        const tramo = tramos.find((item) => item.id === asignacion.tramoId)
+                        const sector = sectores.find((item) => item.id === asignacion.sectorId)
                         return (
                           <li key={asignacion.participanteId}>
                             <strong>{participante?.nombre ?? 'Participante'}</strong>
@@ -219,6 +234,7 @@ export function Mangas() {
   )
 }
 
-function textoRango(rango: { inicio: string; fin: string }) {
+function textoRango(rango: { inicio: string; fin: string } | undefined) {
+  if (!rango) return ''
   return `${rango.inicio}–${rango.fin}`
 }

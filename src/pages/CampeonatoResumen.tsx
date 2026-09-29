@@ -1,12 +1,9 @@
-import { Link, useParams } from 'react-router-dom'
-import { getCampeonato } from '../data/campeonatos'
+import { Link, useOutletContext } from 'react-router-dom'
+import type { ContextoCampeonato } from './CampeonatoLayout'
 import './Home.css'
 
 export function CampeonatoResumen() {
-  const { campeonatoId } = useParams()
-  const campeonato = getCampeonato(campeonatoId)
-
-  if (!campeonato) return null
+  const { campeonato } = useOutletContext<ContextoCampeonato>()
 
   return (
     <ul className="home__cards">

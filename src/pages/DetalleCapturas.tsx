@@ -1,55 +1,91 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { capturasDe, loadCapturas, saveCapturas, type Captura } from '../data/capturas'
-import { loadMangas } from '../data/mangas'
-import { loadParticipantes } from '../data/participantes'
+import {
+  actualizarCaptura,
+  crearCaptura,
+  listarCapturas,
+  listarMangas,
+  listarParticipantes,
+  quitarCaptura,
+} from '../api'
+import { capturasDe, type Captura } from '../data/capturas'
+import type { Manga } from '../data/mangas'
+import type { Participante } from '../data/participantes'
 import './Clasificacion.css'
 
 const vacio = { longitud: '', fechaHora: '' }
 
 export function DetalleCapturas() {
   const { campeonatoId = '', mangaId = '', participanteId = '' } = useParams()
-  const participantes = loadParticipantes(campeonatoId)
-  const mangas = loadMangas(campeonatoId)
-  const participante = participantes.find((item) => item.id === participanteId)
-  const manga = mangas.find((item) => item.id === mangaId)
-  const [capturas, setCapturas] = useState<Captura[]>(() => loadCapturas(campeonatoId))
+  const [participantes, setParticipantes] = useState<Participante[]>([])
+  const [mangas, setMangas] = useState<Manga[]>([])
+  const [capturas, setCapturas] = useState<Captura[]>([])
   const [nueva, setNueva] = useState(vacio)
   const [error, setError] = useState('')
+  const participante = participantes.find((item) => item.id === participanteId)
+  const manga = mangas.find((item) => item.id === mangaId)
   const delParticipante = capturasDe(capturas, participanteId, mangaId)
 
-  function persistir(siguiente: Captura[]) {
-    setCapturas(siguiente)
-    saveCapturas(campeonatoId, siguiente)
-  }
+  useEffect(() => {
+    let activo = true
+    Promise.all([
+      listarParticipantes(campeonatoId),
+      listarMangas(campeonatoId),
+      listarCapturas(campeonatoId, { participanteId, mangaId }),
+    ])
+      .then(([inscritos, mangasCargadas, capturasCargadas]) => {
+        if (!activo) return
+        setParticipantes(inscritos)
+        setMangas(mangasCargadas)
+        setCapturas(capturasCargadas)
+      })
+      .catch((causa: unknown) => {
+        if (activo) setError(causa instanceof Error ? causa.message : 'No se han podido cargar las capturas.')
+      })
+    return () => {
+      activo = false
+    }
+  }, [campeonatoId, participanteId, mangaId])
 
-  function registrar(evento: FormEvent) {
+  async function registrar(evento: FormEvent) {
     evento.preventDefault()
     const longitud = Number(nueva.longitud)
     if (!nueva.fechaHora || !Number.isFinite(longitud) || longitud <= 0) {
       setError('Indica una longitud en centímetros y la fecha y hora.')
       return
     }
-    persistir([
-      ...capturas,
-      {
-        id: crypto.randomUUID(),
+    try {
+      const creada = await crearCaptura(campeonatoId, {
         participanteId,
         mangaId,
         longitud,
         fechaHora: nueva.fechaHora,
-      },
-    ])
-    setNueva(vacio)
-    setError('')
+      })
+      setCapturas((actual) => [...actual, creada])
+      setNueva(vacio)
+      setError('')
+    } catch (causa: unknown) {
+      setError(causa instanceof Error ? causa.message : 'No se ha podido registrar la captura.')
+    }
   }
 
-  function actualizar(id: string, cambios: Partial<Pick<Captura, 'longitud' | 'fechaHora' | 'mangaId'>>) {
-    persistir(capturas.map((captura) => (captura.id === id ? { ...captura, ...cambios } : captura)))
+  async function actualizar(id: string, cambios: Partial<Pick<Captura, 'longitud' | 'fechaHora' | 'mangaId'>>) {
+    if (cambios.longitud !== undefined && (!Number.isFinite(cambios.longitud) || cambios.longitud <= 0)) return
+    try {
+      const actualizada = await actualizarCaptura(campeonatoId, id, cambios)
+      setCapturas((actual) => actual.map((captura) => (captura.id === id ? actualizada : captura)))
+    } catch (causa: unknown) {
+      setError(causa instanceof Error ? causa.message : 'No se ha podido actualizar la captura.')
+    }
   }
 
-  function quitar(id: string) {
-    persistir(capturas.filter((captura) => captura.id !== id))
+  async function quitar(id: string) {
+    try {
+      await quitarCaptura(campeonatoId, id)
+      setCapturas((actual) => actual.filter((captura) => captura.id !== id))
+    } catch (causa: unknown) {
+      setError(causa instanceof Error ? causa.message : 'No se ha podido quitar la captura.')
+    }
   }
 
   return (

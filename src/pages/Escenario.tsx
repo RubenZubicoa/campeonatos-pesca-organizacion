@@ -1,18 +1,17 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   GoogleMap,
   Marker,
   useJsApiLoader,
 } from '@react-google-maps/api'
-import { useParams } from 'react-router-dom'
-import { getCampeonato } from '../data/campeonatos'
+import { useOutletContext, useParams } from 'react-router-dom'
+import { crearSector, crearTramo, moverTramo, obtenerEscenario, quitarSector, quitarTramo } from '../api'
 import {
   colorDeSector,
-  loadEscenario,
-  saveEscenario,
   type Sector,
   type Tramo,
 } from '../data/tramos'
+import type { ContextoCampeonato } from './CampeonatoLayout'
 import './Escenario.css'
 
 const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? ''
@@ -35,22 +34,42 @@ function vistaInicial(tramos: Tramo[]) {
 
 export function Escenario() {
   const { campeonatoId = '' } = useParams()
-  const campeonato = getCampeonato(campeonatoId)
+  const { campeonato } = useOutletContext<ContextoCampeonato>()
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'thelake-google-maps',
     googleMapsApiKey: apiKey,
   })
-  const inicial = loadEscenario(campeonatoId)
-  const [vista] = useState(() => vistaInicial(inicial.tramos))
-  const [sectores, setSectores] = useState<Sector[]>(inicial.sectores)
-  const [tramos, setTramos] = useState<Tramo[]>(inicial.tramos)
+  const [vista, setVista] = useState(() => vistaInicial([]))
+  const [listo, setListo] = useState(false)
+  const [aviso, setAviso] = useState('')
+  const [sectores, setSectores] = useState<Sector[]>([])
+  const [tramos, setTramos] = useState<Tramo[]>([])
   const [nombreSector, setNombreSector] = useState('')
   const [nombre, setNombre] = useState('')
-  const [sectorId, setSectorId] = useState(inicial.sectores[0]?.id ?? '')
+  const [sectorId, setSectorId] = useState('')
   const [punto, setPunto] = useState<{ latitud: number; longitud: number } | null>(null)
   const [seleccionado, setSeleccionado] = useState<string | null>(null)
   const [busqueda, setBusqueda] = useState('')
   const [sectorVisible, setSectorVisible] = useState('todos')
+
+  useEffect(() => {
+    let activo = true
+    obtenerEscenario(campeonatoId)
+      .then((escenario) => {
+        if (!activo) return
+        setSectores(escenario.sectores)
+        setTramos(escenario.tramos)
+        setSectorId(escenario.sectores[0]?.id ?? '')
+        setVista(vistaInicial(escenario.tramos))
+        setListo(true)
+      })
+      .catch((causa: unknown) => {
+        if (activo) setAviso(causa instanceof Error ? causa.message : 'No se ha podido cargar el escenario.')
+      })
+    return () => {
+      activo = false
+    }
+  }, [campeonatoId])
 
   const grupos = useMemo(() => {
     const consulta = busqueda.trim().toLowerCase()
@@ -74,56 +93,70 @@ export function Escenario() {
     return { porSector, sueltos, total: visibles.length }
   }, [sectores, tramos, busqueda, sectorVisible])
 
-  function persist(nextSectores: Sector[], nextTramos: Tramo[]) {
-    setSectores(nextSectores)
-    setTramos(nextTramos)
-    saveEscenario(campeonatoId, { sectores: nextSectores, tramos: nextTramos })
-  }
-
-  function anadirSector() {
+  async function anadirSector() {
     const titulo = nombreSector.trim()
     if (!titulo) return
-    const sector = { id: crypto.randomUUID(), nombre: titulo }
-    persist([...sectores, sector], tramos)
-    setNombreSector('')
-    if (!sectorId) setSectorId(sector.id)
+    try {
+      const sector = await crearSector(campeonatoId, titulo)
+      setSectores((actual) => [...actual, sector])
+      setNombreSector('')
+      if (!sectorId) setSectorId(sector.id)
+      setAviso('')
+    } catch (causa: unknown) {
+      setAviso(causa instanceof Error ? causa.message : 'No se ha podido crear el sector.')
+    }
   }
 
-  function quitarSector(id: string) {
-    persist(
-      sectores.filter((sector) => sector.id !== id),
-      tramos.map((tramo) => (tramo.sectorId === id ? { ...tramo, sectorId: null } : tramo)),
-    )
-    if (sectorId === id) setSectorId(sectores.find((sector) => sector.id !== id)?.id ?? '')
+  async function quitarSectorDe(id: string) {
+    try {
+      await quitarSector(campeonatoId, id)
+      setSectores((actual) => actual.filter((sector) => sector.id !== id))
+      setTramos((actual) => actual.map((tramo) => (tramo.sectorId === id ? { ...tramo, sectorId: null } : tramo)))
+      if (sectorId === id) setSectorId(sectores.find((sector) => sector.id !== id)?.id ?? '')
+      setAviso('')
+    } catch (causa: unknown) {
+      setAviso(causa instanceof Error ? causa.message : 'No se ha podido quitar el sector.')
+    }
   }
 
-  function marcarTramo() {
+  async function marcarTramo() {
     const titulo = nombre.trim()
     if (!titulo || !sectorId || !punto) return
-    persist(sectores, [
-      ...tramos,
-      {
-        id: crypto.randomUUID(),
+    try {
+      const tramo = await crearTramo(campeonatoId, {
         nombre: titulo,
         sectorId,
         latitud: punto.latitud,
         longitud: punto.longitud,
-      },
-    ])
-    setNombre('')
-    setPunto(null)
+      })
+      setTramos((actual) => [...actual, tramo])
+      setNombre('')
+      setPunto(null)
+      setAviso('')
+    } catch (causa: unknown) {
+      setAviso(causa instanceof Error ? causa.message : 'No se ha podido marcar el tramo.')
+    }
   }
 
-  function quitar(id: string) {
-    persist(sectores, tramos.filter((tramo) => tramo.id !== id))
-    if (seleccionado === id) setSeleccionado(null)
+  async function quitar(id: string) {
+    try {
+      await quitarTramo(campeonatoId, id)
+      setTramos((actual) => actual.filter((tramo) => tramo.id !== id))
+      if (seleccionado === id) setSeleccionado(null)
+      setAviso('')
+    } catch (causa: unknown) {
+      setAviso(causa instanceof Error ? causa.message : 'No se ha podido quitar el tramo.')
+    }
   }
 
-  function mover(id: string, nuevoSectorId: string) {
-    persist(
-      sectores,
-      tramos.map((tramo) => (tramo.id === id ? { ...tramo, sectorId: nuevoSectorId || null } : tramo)),
-    )
+  async function mover(id: string, nuevoSectorId: string) {
+    try {
+      const actualizado = await moverTramo(campeonatoId, id, nuevoSectorId || null)
+      setTramos((actual) => actual.map((tramo) => (tramo.id === id ? actualizado : tramo)))
+      setAviso('')
+    } catch (causa: unknown) {
+      setAviso(causa instanceof Error ? causa.message : 'No se ha podido mover el tramo.')
+    }
   }
 
   function alPulsarMapa(evento: google.maps.MapMouseEvent) {
@@ -147,12 +180,13 @@ export function Escenario() {
         {apiKey && !isLoaded && !loadError && (
           <p className="escenario__aviso">Cargando el mapa…</p>
         )}
-        {apiKey && isLoaded && (
+        {aviso && <p className="escenario__aviso">{aviso}</p>}
+        {apiKey && isLoaded && listo && (
           <GoogleMap
             mapContainerClassName="escenario__lienzo"
             center={vista.center}
             zoom={vista.zoom}
-            onLoad={(mapa) => encuadrarTramos(mapa, inicial.tramos)}
+            onLoad={(mapa) => encuadrarTramos(mapa, tramos)}
             onClick={alPulsarMapa}
             options={{
               mapTypeId: 'hybrid',
@@ -288,7 +322,7 @@ export function Escenario() {
                   {sector.nombre}
                   <span>{delSector.length}</span>
                 </h3>
-                <button type="button" className="escenario__quitar-sector" onClick={() => quitarSector(sector.id)}>
+                <button type="button" className="escenario__quitar-sector" onClick={() => quitarSectorDe(sector.id)}>
                   Quitar sector
                 </button>
               </header>

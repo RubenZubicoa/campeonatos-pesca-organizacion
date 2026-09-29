@@ -1,14 +1,8 @@
-import { useState, type FormEvent } from 'react'
-import { useParams } from 'react-router-dom'
-import { getCampeonato } from '../data/campeonatos'
-import {
-  crearIdAcceso,
-  dniValido,
-  loadParticipantes,
-  normalizarDni,
-  saveParticipantes,
-  type Participante,
-} from '../data/participantes'
+import { useEffect, useState, type FormEvent } from 'react'
+import { useOutletContext, useParams } from 'react-router-dom'
+import { crearParticipante, listarParticipantes, quitarParticipante } from '../api'
+import { dniValido, normalizarDni, type Participante } from '../data/participantes'
+import type { ContextoCampeonato } from './CampeonatoLayout'
 import './Participantes.css'
 
 const vacio = { nombre: '', fechaNacimiento: '', dni: '' }
@@ -20,18 +14,30 @@ function fechaLegible(iso: string) {
 
 export function Participantes() {
   const { campeonatoId = '' } = useParams()
-  const campeonato = getCampeonato(campeonatoId)
-  const [participantes, setParticipantes] = useState<Participante[]>(() =>
-    loadParticipantes(campeonatoId),
-  )
+  const { campeonato } = useOutletContext<ContextoCampeonato>()
+  const [participantes, setParticipantes] = useState<Participante[]>([])
   const [formulario, setFormulario] = useState(vacio)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    let activo = true
+    listarParticipantes(campeonatoId)
+      .then((lista) => {
+        if (activo) setParticipantes(lista)
+      })
+      .catch((causa: unknown) => {
+        if (activo) setError(causa instanceof Error ? causa.message : 'No se han podido cargar los participantes.')
+      })
+    return () => {
+      activo = false
+    }
+  }, [campeonatoId])
 
   function actualizar(campo: keyof typeof vacio, valor: string) {
     setFormulario((actual) => ({ ...actual, [campo]: valor }))
   }
 
-  function alta(evento: FormEvent) {
+  async function alta(evento: FormEvent) {
     evento.preventDefault()
     const nombre = formulario.nombre.trim()
     const dni = normalizarDni(formulario.dni)
@@ -54,25 +60,23 @@ export function Participantes() {
       return
     }
 
-    const siguiente = [
-      ...participantes,
-      {
-        id: crearIdAcceso(participantes.map((participante) => participante.id)),
-        nombre,
-        fechaNacimiento: fecha,
-        dni,
-      },
-    ]
-    setParticipantes(siguiente)
-    saveParticipantes(campeonatoId, siguiente)
-    setFormulario(vacio)
-    setError('')
+    try {
+      const creado = await crearParticipante(campeonatoId, { nombre, fechaNacimiento: fecha, dni })
+      setParticipantes((actual) => [...actual, creado])
+      setFormulario(vacio)
+      setError('')
+    } catch (causa: unknown) {
+      setError(causa instanceof Error ? causa.message : 'No se ha podido inscribir al participante.')
+    }
   }
 
-  function quitar(id: string) {
-    const siguiente = participantes.filter((participante) => participante.id !== id)
-    setParticipantes(siguiente)
-    saveParticipantes(campeonatoId, siguiente)
+  async function quitar(id: string) {
+    try {
+      await quitarParticipante(campeonatoId, id)
+      setParticipantes((actual) => actual.filter((participante) => participante.id !== id))
+    } catch (causa: unknown) {
+      setError(causa instanceof Error ? causa.message : 'No se ha podido quitar al participante.')
+    }
   }
 
   return (
@@ -80,7 +84,7 @@ export function Participantes() {
       <form className="participantes__alta" onSubmit={alta}>
         <h2>Nuevo participante</h2>
         <p>
-          La inscripción queda solo en {campeonato?.nombre ?? 'este campeonato'}.
+          La inscripción queda solo en {campeonato.nombre}.
           El identificador sirve para entrar en la app móvil.
         </p>
         <label>
