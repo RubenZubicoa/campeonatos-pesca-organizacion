@@ -14,7 +14,7 @@ import {
 import type { ContextoCampeonato } from './CampeonatoLayout'
 import './Escenario.css'
 
-const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? ''
+const apiKey = import.meta.env.GOOGLE_MAPS_API_KEY ?? ''
 
 function encuadrarTramos(mapa: google.maps.Map, tramos: Tramo[]) {
   if (tramos.length < 2) return
@@ -171,7 +171,7 @@ export function Escenario() {
         {!apiKey && (
           <p className="escenario__aviso">
             Añade la clave de Google Maps en la variable
-            VITE_GOOGLE_MAPS_API_KEY para ver el escenario y marcar tramos.
+            GOOGLE_MAPS_API_KEY para ver el escenario y marcar tramos.
           </p>
         )}
         {apiKey && loadError && (

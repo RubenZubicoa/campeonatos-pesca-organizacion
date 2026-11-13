@@ -4,7 +4,7 @@ import type { Manga, RangoHorario } from './data/mangas'
 import type { Participante } from './data/participantes'
 import type { EscenarioGuardado, Sector, Tramo } from './data/tramos'
 
-const base = import.meta.env.VITE_API_URL ?? 'http://localhost:4000'
+const base = import.meta.env.API_URL ?? 'http://localhost:4000'
 
 export class ApiError extends Error {
   status: number
