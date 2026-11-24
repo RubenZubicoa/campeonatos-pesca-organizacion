@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { CampeonatoLayout } from './pages/CampeonatoLayout'
 import { CampeonatoResumen } from './pages/CampeonatoResumen'
+import { Configuracion } from './pages/Configuracion'
 import { Campeonatos } from './pages/Campeonatos'
 import { Clasificacion } from './pages/Clasificacion'
 import { DetalleCapturas } from './pages/DetalleCapturas'
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="campeonatos" element={<Campeonatos />} />
         <Route path="campeonatos/:campeonatoId" element={<CampeonatoLayout />}>
           <Route index element={<CampeonatoResumen />} />
+          <Route path="configuracion" element={<Configuracion />} />
           <Route path="escenario" element={<Escenario />} />
           <Route path="participantes" element={<Participantes />} />
           <Route path="mangas" element={<Mangas />} />

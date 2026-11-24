@@ -42,6 +42,16 @@ export function obtenerCampeonato(id: string) {
   return pedir<Campeonato>(`/api/campeonatos/${id}`)
 }
 
+export function actualizarCampeonato(
+  id: string,
+  cambios: Partial<Pick<Campeonato, 'nombre' | 'fecha' | 'lugar' | 'medidaMinima' | 'puntosT' | 'duos'>>,
+) {
+  return pedir<Campeonato>(`/api/campeonatos/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(cambios),
+  })
+}
+
 export function listarParticipantes(campeonatoId: string) {
   return pedir<Participante[]>(`/api/campeonatos/${campeonatoId}/participantes`)
 }
@@ -154,6 +164,37 @@ export function actualizarCaptura(
 
 export function quitarCaptura(campeonatoId: string, capturaId: string) {
   return pedir<void>(`/api/campeonatos/${campeonatoId}/capturas/${capturaId}`, { method: 'DELETE' })
+}
+
+export type Control = {
+  id: string
+  mangaId: string
+  participanteId: string
+  control: string
+  tramo: string
+}
+
+export function listarControles(campeonatoId: string, mangaId?: string) {
+  const consulta = mangaId ? `?mangaId=${encodeURIComponent(mangaId)}` : ''
+  return pedir<Control[]>(`/api/campeonatos/${campeonatoId}/controls${consulta}`)
+}
+
+export function generarControles(campeonatoId: string, mangaId: string) {
+  return pedir<Control[]>(`/api/campeonatos/${campeonatoId}/controls/generar`, {
+    method: 'POST',
+    body: JSON.stringify({ mangaId }),
+  })
+}
+
+export function actualizarControl(
+  campeonatoId: string,
+  controlId: string,
+  cambios: Partial<Pick<Control, 'control' | 'tramo'>>,
+) {
+  return pedir<Control>(`/api/campeonatos/${campeonatoId}/controls/${controlId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(cambios),
+  })
 }
 
 export function obtenerClasificacion(campeonatoId: string) {

@@ -2,12 +2,16 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   ApiError,
+  actualizarControl,
   cambiarVisibilidadManga,
   crearManga,
+  generarControles,
+  listarControles,
   listarMangas,
   listarParticipantes,
   obtenerEscenario,
   quitarManga,
+  type Control,
 } from '../api'
 import type { Manga, RangoHorario } from '../data/mangas'
 import type { Participante } from '../data/participantes'
@@ -22,6 +26,7 @@ export function Mangas() {
   const [participantes, setParticipantes] = useState<Participante[]>([])
   const [sectores, setSectores] = useState<Sector[]>([])
   const [tramos, setTramos] = useState<Tramo[]>([])
+  const [controles, setControles] = useState<Control[]>([])
   const [abierto, setAbierto] = useState(false)
   const [formulario, setFormulario] = useState(vacio)
   const [error, setError] = useState('')
@@ -29,13 +34,19 @@ export function Mangas() {
 
   useEffect(() => {
     let activo = true
-    Promise.all([listarMangas(campeonatoId), listarParticipantes(campeonatoId), obtenerEscenario(campeonatoId)])
-      .then(([mangasCargadas, inscritos, escenario]) => {
+    Promise.all([
+      listarMangas(campeonatoId),
+      listarParticipantes(campeonatoId),
+      obtenerEscenario(campeonatoId),
+      listarControles(campeonatoId),
+    ])
+      .then(([mangasCargadas, inscritos, escenario, controlesCargados]) => {
         if (!activo) return
         setMangas(mangasCargadas)
         setParticipantes(inscritos)
         setSectores(escenario.sectores)
         setTramos(escenario.tramos)
+        setControles(controlesCargados)
       })
       .catch((causa: unknown) => {
         if (activo) setError(causa instanceof Error ? causa.message : 'No se han podido cargar las mangas.')
@@ -105,6 +116,25 @@ export function Mangas() {
       setMangas((actual) => actual.map((item) => (item.id === id ? actualizada : item)))
     } catch (causa: unknown) {
       setError(causa instanceof Error ? causa.message : 'No se ha podido cambiar la visibilidad.')
+    }
+  }
+
+  async function generar(mangaId: string) {
+    try {
+      const generados = await generarControles(campeonatoId, mangaId)
+      setControles((actual) => [...actual.filter((control) => control.mangaId !== mangaId), ...generados])
+      setError('')
+    } catch (causa: unknown) {
+      setError(causa instanceof Error ? causa.message : 'No se han podido generar los controles.')
+    }
+  }
+
+  async function editarControl(control: Control, cambios: Partial<Pick<Control, 'control' | 'tramo'>>) {
+    try {
+      const actualizado = await actualizarControl(campeonatoId, control.id, cambios)
+      setControles((actual) => actual.map((item) => (item.id === control.id ? actualizado : item)))
+    } catch (causa: unknown) {
+      setError(causa instanceof Error ? causa.message : 'No se ha podido guardar el control.')
     }
   }
 
@@ -202,30 +232,51 @@ export function Mangas() {
                   </button>
                 )}
               </header>
-              {[1, 2].map((turno) => (
-                <div key={turno}>
-                  <h3>
-                    {turno === 1 ? 'Primera mitad' : 'Segunda mitad'} · {textoRango(manga.rangos[turno - 1])}
-                  </h3>
-                  <ul>
-                    {manga.asignaciones
-                      .filter((asignacion) => asignacion.turno === turno)
-                      .map((asignacion) => {
-                        const participante = participantes.find((item) => item.id === asignacion.participanteId)
-                        const tramo = tramos.find((item) => item.id === asignacion.tramoId)
-                        const sector = sectores.find((item) => item.id === asignacion.sectorId)
-                        return (
-                          <li key={asignacion.participanteId}>
-                            <strong>{participante?.nombre ?? 'Participante'}</strong>
-                            <span>
-                              {sector?.nombre ?? 'Sector'} · {tramo?.nombre ?? 'Tramo'}
-                            </span>
-                          </li>
-                        )
-                      })}
-                  </ul>
-                </div>
-              ))}
+              {(() => {
+                const controlesManga = controles.filter((control) => control.mangaId === manga.id)
+                const turnoPesca = new Map(manga.asignaciones.map((asignacion) => [asignacion.participanteId, asignacion.turno]))
+                return (
+                  <>
+                    {controlesManga.length === 0 && (
+                      <button type="button" className="mangas__secundario" onClick={() => generar(manga.id)}>
+                        Generar controles
+                      </button>
+                    )}
+                    {[1, 2].map((turno) => (
+                      <div key={turno}>
+                        <h3>
+                          {turno === 1 ? 'Primera mitad' : 'Segunda mitad'} · {textoRango(manga.rangos[turno - 1])}
+                        </h3>
+                        <ul>
+                          {manga.asignaciones
+                            .filter((asignacion) => asignacion.turno === turno)
+                            .map((asignacion) => {
+                              const participante = participantes.find((item) => item.id === asignacion.participanteId)
+                              const tramo = tramos.find((item) => item.id === asignacion.tramoId)
+                              const sector = sectores.find((item) => item.id === asignacion.sectorId)
+                              return (
+                                <li key={asignacion.participanteId}>
+                                  <strong>{participante?.nombre ?? 'Participante'}</strong>
+                                  <span>
+                                    {sector?.nombre ?? 'Sector'} · {tramo?.nombre ?? 'Tramo'}
+                                  </span>
+                                </li>
+                              )
+                            })}
+                        </ul>
+                        {controlesManga.length > 0 && (
+                          <ControlesManga
+                            controles={controlesDeHora(controlesManga, turno, turnoPesca)}
+                            participantes={participantes}
+                            tramos={tramos}
+                            onEditar={editarControl}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </>
+                )
+              })()}
             </li>
           ))}
         </ul>
@@ -237,4 +288,140 @@ export function Mangas() {
 function textoRango(rango: { inicio: string; fin: string } | undefined) {
   if (!rango) return ''
   return `${rango.inicio}–${rango.fin}`
+}
+
+function horaDeControl(turnoPesca: 1 | 2 | undefined): 1 | 2 | null {
+  if (turnoPesca === 1) return 2
+  if (turnoPesca === 2) return 1
+  return null
+}
+
+function controlesDeHora(controles: Control[], turno: 1 | 2, turnoPesca: Map<string, 1 | 2>) {
+  return controles.filter((control) => {
+    const hora = horaDeControl(turnoPesca.get(control.participanteId))
+    return hora === turno || (hora === null && turno === 1)
+  })
+}
+
+function ControlesManga({
+  controles,
+  participantes,
+  tramos,
+  onEditar,
+}: {
+  controles: Control[]
+  participantes: Participante[]
+  tramos: Tramo[]
+  onEditar: (control: Control, cambios: Partial<Pick<Control, 'control' | 'tramo'>>) => void
+}) {
+  const nombres = [...new Set(tramos.map((tramo) => tramo.nombre))].sort((a, b) =>
+    a.localeCompare(b, 'es', { numeric: true }),
+  )
+
+  return (
+    <div className="mangas__controles">
+      <header>
+        <h3>Controles de esta hora</h3>
+        <p>Quien no pesca ahora controla el tramo indicado.</p>
+      </header>
+      {controles.length === 0 ? (
+        <p className="mangas__vacio">Nadie controla en esta franja.</p>
+      ) : (
+        <ul>
+          {controles.map((control) => (
+            <FilaControl
+              key={control.id}
+              control={control}
+              nombre={participantes.find((item) => item.id === control.participanteId)?.nombre ?? 'Participante'}
+              nombres={nombres}
+              onEditar={onEditar}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function FilaControl({
+  control,
+  nombre,
+  nombres,
+  onEditar,
+}: {
+  control: Control
+  nombre: string
+  nombres: string[]
+  onEditar: (control: Control, cambios: Partial<Pick<Control, 'control' | 'tramo'>>) => void
+}) {
+  const [editando, setEditando] = useState(false)
+  const [tramo, setTramo] = useState(control.tramo)
+  const [controlado, setControlado] = useState(control.control)
+
+  function empezar() {
+    setTramo(control.tramo)
+    setControlado(control.control)
+    setEditando(true)
+  }
+
+  function guardar() {
+    const cambios: Partial<Pick<Control, 'control' | 'tramo'>> = {}
+    if (tramo !== control.tramo) cambios.tramo = tramo
+    if (controlado !== control.control) cambios.control = controlado
+    if (Object.keys(cambios).length > 0) onEditar(control, cambios)
+    setEditando(false)
+  }
+
+  return (
+    <li className={editando ? 'is-editing' : undefined}>
+      <strong>{nombre}</strong>
+      {editando ? (
+        <>
+          <label>
+            Pesca
+            <select value={tramo} onChange={(event) => setTramo(event.target.value)}>
+              {opciones(nombres, tramo)}
+            </select>
+          </label>
+          <label>
+            Controla
+            <select value={controlado} onChange={(event) => setControlado(event.target.value)}>
+              {opciones(nombres, controlado)}
+            </select>
+          </label>
+          <div className="mangas__fila-acciones">
+            <button type="button" onClick={guardar}>
+              Guardar
+            </button>
+            <button type="button" className="mangas__secundario" onClick={() => setEditando(false)}>
+              Cancelar
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <span>
+            <em>Pesca</em>
+            {control.tramo}
+          </span>
+          <span>
+            <em>Controla</em>
+            {control.control}
+          </span>
+          <button type="button" className="mangas__modificar" onClick={empezar}>
+            Modificar
+          </button>
+        </>
+      )}
+    </li>
+  )
+}
+
+function opciones(nombres: string[], actual: string) {
+  const lista = nombres.includes(actual) ? nombres : [actual, ...nombres]
+  return lista.map((nombre) => (
+    <option key={nombre} value={nombre}>
+      {nombre}
+    </option>
+  ))
 }

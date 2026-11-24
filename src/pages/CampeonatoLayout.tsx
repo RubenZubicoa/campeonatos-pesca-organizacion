@@ -5,7 +5,10 @@ import type { Campeonato } from '../data/campeonatos'
 import './CampeonatoLayout.css'
 import './Home.css'
 
-export type ContextoCampeonato = { campeonato: Campeonato }
+export type ContextoCampeonato = {
+  campeonato: Campeonato
+  setCampeonato: (campeonato: Campeonato) => void
+}
 
 export function CampeonatoLayout() {
   const { campeonatoId = '' } = useParams()
@@ -66,6 +69,9 @@ export function CampeonatoLayout() {
         <NavLink to="." end className={linkClass}>
           Resumen
         </NavLink>
+        <NavLink to="configuracion" className={linkClass}>
+          Configuración
+        </NavLink>
         <NavLink to="escenario" className={linkClass}>
           Escenario de pesca
         </NavLink>
@@ -79,7 +85,7 @@ export function CampeonatoLayout() {
           Clasificación
         </NavLink>
       </nav>
-      <Outlet context={{ campeonato } satisfies ContextoCampeonato} />
+      <Outlet context={{ campeonato, setCampeonato } satisfies ContextoCampeonato} />
     </section>
   )
 }

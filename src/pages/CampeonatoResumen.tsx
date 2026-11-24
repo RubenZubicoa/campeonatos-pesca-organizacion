@@ -8,6 +8,12 @@ export function CampeonatoResumen() {
   return (
     <ul className="home__cards">
       <li>
+        <Link className="card-link" to="configuracion">
+          <h2>Configuración</h2>
+          <p>Nombre, lugar, medida mínima, puntos T y dúos.</p>
+        </Link>
+      </li>
+      <li>
         <Link className="card-link" to="escenario">
           <h2>Escenario de pesca</h2>
           <p>Mapa del escenario y tramos de esta prueba.</p>
