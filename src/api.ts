@@ -6,6 +6,23 @@ import type { EscenarioGuardado, Sector, Tramo } from './data/tramos'
 
 const base = import.meta.env.API_URL ?? 'http://localhost:4000'
 
+type OyenteCarga = (pendientes: number) => void
+const oyentesCarga = new Set<OyenteCarga>()
+let peticionesPendientes = 0
+
+export function suscribirCarga(oyente: OyenteCarga) {
+  oyentesCarga.add(oyente)
+  oyente(peticionesPendientes)
+  return () => {
+    oyentesCarga.delete(oyente)
+  }
+}
+
+function cambiarCarga(delta: number) {
+  peticionesPendientes = Math.max(0, peticionesPendientes + delta)
+  for (const oyente of oyentesCarga) oyente(peticionesPendientes)
+}
+
 export class ApiError extends Error {
   status: number
   requiereConfirmacion: boolean
@@ -213,23 +230,28 @@ export function obtenerClasificacion(campeonatoId: string) {
 }
 
 async function pedir<T>(ruta: string, init?: RequestInit): Promise<T> {
-  let respuesta: Response
+  cambiarCarga(1)
   try {
-    respuesta = await fetch(`${base}${ruta}`, {
-      ...init,
-      headers: {
-        ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-        ...init?.headers,
-      },
-    })
-  } catch {
-    throw new ApiError(0, 'No se ha podido conectar con la API.')
-  }
+    let respuesta: Response
+    try {
+      respuesta = await fetch(`${base}${ruta}`, {
+        ...init,
+        headers: {
+          ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+          ...init?.headers,
+        },
+      })
+    } catch {
+      throw new ApiError(0, 'No se ha podido conectar con la API.')
+    }
 
-  if (respuesta.status === 204) return undefined as T
-  const datos = (await respuesta.json().catch(() => ({}))) as { error?: string; requiereConfirmacion?: boolean }
-  if (!respuesta.ok) {
-    throw new ApiError(respuesta.status, datos.error ?? 'No se ha podido completar la operación.', datos.requiereConfirmacion === true)
+    if (respuesta.status === 204) return undefined as T
+    const datos = (await respuesta.json().catch(() => ({}))) as { error?: string; requiereConfirmacion?: boolean }
+    if (!respuesta.ok) {
+      throw new ApiError(respuesta.status, datos.error ?? 'No se ha podido completar la operación.', datos.requiereConfirmacion === true)
+    }
+    return datos as T
+  } finally {
+    cambiarCarga(-1)
   }
-  return datos as T
 }

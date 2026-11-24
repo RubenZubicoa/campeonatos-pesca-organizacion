@@ -1,0 +1,53 @@
+.carga {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 5, 4, 0.72);
+}
+
+.carga__panel {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  min-width: 180px;
+  padding: 28px 36px;
+  border: 1px solid rgba(209, 176, 74, 0.4);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(180deg, rgba(240, 209, 106, 0.1), transparent 48%),
+    #12110ee6;
+  box-shadow: var(--shadow);
+}
+
+.carga__anillo {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 3px solid rgba(209, 176, 74, 0.22);
+  border-top-color: var(--gold-2);
+  animation: carga-giro 0.75s linear infinite;
+}
+
+.carga p {
+  margin: 0;
+  font-family: var(--display);
+  letter-spacing: 0.18em;
+  font-size: 26px;
+  color: var(--gold-2);
+}
+
+@keyframes carga-giro {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carga__anillo {
+    animation: none;
+    border-color: var(--gold-2);
+    border-right-color: transparent;
+  }
+}
