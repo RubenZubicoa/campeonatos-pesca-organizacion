@@ -122,6 +122,17 @@ export function crearManga(
   })
 }
 
+export function editarAsignacionManga(
+  campeonatoId: string,
+  mangaId: string,
+  asignacion: { participanteId: string; tramoId: string; turno: 1 | 2 },
+) {
+  return pedir<Manga>(`/api/campeonatos/${campeonatoId}/mangas/${mangaId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ asignacion }),
+  })
+}
+
 export function cambiarVisibilidadManga(campeonatoId: string, mangaId: string, visibleParaParticipantes: boolean) {
   return pedir<Manga>(`/api/campeonatos/${campeonatoId}/mangas/${mangaId}`, {
     method: 'PATCH',

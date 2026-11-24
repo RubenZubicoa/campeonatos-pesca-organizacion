@@ -5,6 +5,7 @@ import {
   actualizarControl,
   cambiarVisibilidadManga,
   crearManga,
+  editarAsignacionManga,
   generarControles,
   listarControles,
   listarMangas,
@@ -13,7 +14,7 @@ import {
   quitarManga,
   type Control,
 } from '../api'
-import type { Manga, RangoHorario } from '../data/mangas'
+import type { Asignacion, Manga, RangoHorario } from '../data/mangas'
 import type { Participante } from '../data/participantes'
 import type { Sector, Tramo } from '../data/tramos'
 import './Mangas.css'
@@ -138,6 +139,19 @@ export function Mangas() {
     }
   }
 
+  async function guardarAsignacion(mangaId: string, participanteId: string, tramoId: string, turno: 1 | 2) {
+    try {
+      const actualizada = await editarAsignacionManga(campeonatoId, mangaId, { participanteId, tramoId, turno })
+      setMangas((actual) => actual.map((item) => (item.id === mangaId ? actualizada : item)))
+      setControles((actual) => actual.filter((control) => control.mangaId !== mangaId))
+      setError('')
+      return true
+    } catch (causa: unknown) {
+      setError(causa instanceof Error ? causa.message : 'No se ha podido modificar el reparto.')
+      return false
+    }
+  }
+
   async function quitarUltima() {
     const ultima = mangas.at(-1)
     if (!ultima) return
@@ -247,28 +261,29 @@ export function Mangas() {
                         <h3>
                           {turno === 1 ? 'Primera mitad' : 'Segunda mitad'} · {textoRango(manga.rangos[turno - 1])}
                         </h3>
-                        <ul>
+                        <ul className="mangas__reparto">
                           {manga.asignaciones
                             .filter((asignacion) => asignacion.turno === turno)
-                            .map((asignacion) => {
-                              const participante = participantes.find((item) => item.id === asignacion.participanteId)
-                              const tramo = tramos.find((item) => item.id === asignacion.tramoId)
-                              const sector = sectores.find((item) => item.id === asignacion.sectorId)
-                              return (
-                                <li key={asignacion.participanteId}>
-                                  <strong>{participante?.nombre ?? 'Participante'}</strong>
-                                  <span>
-                                    {sector?.nombre ?? 'Sector'} · {tramo?.nombre ?? 'Tramo'}
-                                  </span>
-                                </li>
-                              )
-                            })}
+                            .map((asignacion) => (
+                              <FilaAsignacion
+                                key={asignacion.participanteId}
+                                asignacion={asignacion}
+                                nombre={participantes.find((item) => item.id === asignacion.participanteId)?.nombre ?? 'Participante'}
+                                sector={sectores.find((item) => item.id === asignacion.sectorId)?.nombre ?? 'Sector'}
+                                tramo={tramos.find((item) => item.id === asignacion.tramoId)?.nombre ?? 'Tramo'}
+                                manga={manga}
+                                tramos={tramos}
+                                sectores={sectores}
+                                onGuardar={(participanteId, tramoId, hora) => guardarAsignacion(manga.id, participanteId, tramoId, hora)}
+                              />
+                            ))}
                         </ul>
                         {controlesManga.length > 0 && (
                           <ControlesManga
                             controles={controlesDeHora(controlesManga, turno, turnoPesca)}
                             participantes={participantes}
                             tramos={tramos}
+                            nombresControl={nombresPescados(manga.asignaciones, turno, tramos)}
                             onEditar={editarControl}
                           />
                         )}
@@ -282,6 +297,126 @@ export function Mangas() {
         </ul>
       )}
     </div>
+  )
+}
+
+function FilaAsignacion({
+  asignacion,
+  nombre,
+  sector,
+  tramo,
+  manga,
+  tramos,
+  sectores,
+  onGuardar,
+}: {
+  asignacion: Asignacion
+  nombre: string
+  sector: string
+  tramo: string
+  manga: Manga
+  tramos: Tramo[]
+  sectores: Sector[]
+  onGuardar: (participanteId: string, tramoId: string, turno: 1 | 2) => Promise<boolean>
+}) {
+  const [editando, setEditando] = useState(false)
+  const [turno, setTurno] = useState<1 | 2>(asignacion.turno)
+  const [tramoId, setTramoId] = useState(asignacion.tramoId)
+  const [guardando, setGuardando] = useState(false)
+  const opciones = tramosOrdenados(tramos, sectores)
+
+  function empezar() {
+    setTurno(asignacion.turno)
+    setTramoId(asignacion.tramoId)
+    setEditando(true)
+  }
+
+  function cambiarTurno(hora: 1 | 2) {
+    setTurno(hora)
+    if (tramoOcupado(manga, hora, asignacion.participanteId, tramoId)) {
+      const libre = opciones.find((opcion) => !tramoOcupado(manga, hora, asignacion.participanteId, opcion.id))
+      if (libre) setTramoId(libre.id)
+    }
+  }
+
+  async function guardar() {
+    if (turno === asignacion.turno && tramoId === asignacion.tramoId) {
+      setEditando(false)
+      return
+    }
+    setGuardando(true)
+    const guardado = await onGuardar(asignacion.participanteId, tramoId, turno)
+    setGuardando(false)
+    if (guardado) setEditando(false)
+  }
+
+  return (
+    <li className={editando ? 'is-editing' : undefined}>
+      <strong>{nombre}</strong>
+      {editando ? (
+        <>
+          <label>
+            Hora
+            <select value={turno} onChange={(event) => cambiarTurno(event.target.value === '2' ? 2 : 1)}>
+              <option value={1}>Primera mitad · {textoRango(manga.rangos[0])}</option>
+              <option value={2}>Segunda mitad · {textoRango(manga.rangos[1])}</option>
+            </select>
+          </label>
+          <label>
+            Tramo
+            <select value={tramoId} onChange={(event) => setTramoId(event.target.value)}>
+              {opciones.map((opcion) => (
+                <option
+                  key={opcion.id}
+                  value={opcion.id}
+                  disabled={tramoOcupado(manga, turno, asignacion.participanteId, opcion.id)}
+                >
+                  {opcion.etiqueta}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="mangas__fila-acciones">
+            <button type="button" onClick={guardar} disabled={guardando}>
+              {guardando ? 'Guardando…' : 'Guardar'}
+            </button>
+            <button type="button" className="mangas__secundario" onClick={() => setEditando(false)} disabled={guardando}>
+              Cancelar
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <span>
+            {sector} · {tramo}
+          </span>
+          <button type="button" className="mangas__modificar" onClick={empezar}>
+            Modificar
+          </button>
+        </>
+      )}
+    </li>
+  )
+}
+
+function tramosOrdenados(tramos: Tramo[], sectores: Sector[]) {
+  return [...tramos]
+    .map((tramo) => ({
+      id: tramo.id,
+      etiqueta: `${sectores.find((sector) => sector.id === tramo.sectorId)?.nombre ?? 'Sin sector'} · ${tramo.nombre}`,
+      ordenSector: sectores.find((sector) => sector.id === tramo.sectorId)?.nombre ?? 'Sin sector',
+      ordenTramo: tramo.nombre,
+    }))
+    .sort(
+      (a, b) =>
+        a.ordenSector.localeCompare(b.ordenSector, 'es') || a.ordenTramo.localeCompare(b.ordenTramo, 'es', { numeric: true }),
+    )
+}
+
+function tramoOcupado(manga: Manga, turno: 1 | 2, participanteId: string, tramoId: string) {
+  return manga.asignaciones.some(
+    (asignacion) =>
+      asignacion.participanteId !== participanteId && asignacion.turno === turno && asignacion.tramoId === tramoId,
   )
 }
 
@@ -303,15 +438,28 @@ function controlesDeHora(controles: Control[], turno: 1 | 2, turnoPesca: Map<str
   })
 }
 
+function nombresPescados(
+  asignaciones: { tramoId: string; turno: 1 | 2 }[],
+  turno: 1 | 2,
+  tramos: Tramo[],
+) {
+  const ids = new Set(asignaciones.filter((asignacion) => asignacion.turno === turno).map((asignacion) => asignacion.tramoId))
+  return [...new Set(tramos.filter((tramo) => ids.has(tramo.id)).map((tramo) => tramo.nombre))].sort((a, b) =>
+    a.localeCompare(b, 'es', { numeric: true }),
+  )
+}
+
 function ControlesManga({
   controles,
   participantes,
   tramos,
+  nombresControl,
   onEditar,
 }: {
   controles: Control[]
   participantes: Participante[]
   tramos: Tramo[]
+  nombresControl: string[]
   onEditar: (control: Control, cambios: Partial<Pick<Control, 'control' | 'tramo'>>) => void
 }) {
   const nombres = [...new Set(tramos.map((tramo) => tramo.nombre))].sort((a, b) =>
@@ -322,7 +470,7 @@ function ControlesManga({
     <div className="mangas__controles">
       <header>
         <h3>Controles de esta hora</h3>
-        <p>Quien no pesca ahora controla el tramo indicado.</p>
+        <p>Quien pesca en la otra franja controla un tramo que se pesca ahora.</p>
       </header>
       {controles.length === 0 ? (
         <p className="mangas__vacio">Nadie controla en esta franja.</p>
@@ -334,6 +482,7 @@ function ControlesManga({
               control={control}
               nombre={participantes.find((item) => item.id === control.participanteId)?.nombre ?? 'Participante'}
               nombres={nombres}
+              nombresControl={nombresControl}
               onEditar={onEditar}
             />
           ))}
@@ -347,11 +496,13 @@ function FilaControl({
   control,
   nombre,
   nombres,
+  nombresControl,
   onEditar,
 }: {
   control: Control
   nombre: string
   nombres: string[]
+  nombresControl: string[]
   onEditar: (control: Control, cambios: Partial<Pick<Control, 'control' | 'tramo'>>) => void
 }) {
   const [editando, setEditando] = useState(false)
@@ -360,7 +511,7 @@ function FilaControl({
 
   function empezar() {
     setTramo(control.tramo)
-    setControlado(control.control)
+    setControlado(nombresControl.includes(control.control) ? control.control : (nombresControl[0] ?? control.control))
     setEditando(true)
   }
 
@@ -386,7 +537,7 @@ function FilaControl({
           <label>
             Controla
             <select value={controlado} onChange={(event) => setControlado(event.target.value)}>
-              {opciones(nombres, controlado)}
+              {opciones(nombresControl, controlado)}
             </select>
           </label>
           <div className="mangas__fila-acciones">
